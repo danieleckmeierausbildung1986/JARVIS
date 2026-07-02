@@ -67,8 +67,7 @@ def main() -> None:
     stt = SpeechToText()
     tts = TextToSpeech()
 
-    def on_alarm(label: str) -> None:
-        message = f"Timer {label} ist abgelaufen."
+    def on_alarm(message: str) -> None:
         print(f"\n⏰ {message}")
         tts.say(message)
 

@@ -29,7 +29,7 @@ class TimerManager:
     def _fire(self, label: str) -> None:
         with self._lock:
             self._timers.pop(label, None)
-        self._on_alarm(label)
+        self._on_alarm(f"Timer '{label}' ist abgelaufen.")
 
     def cancel_timer(self, label: str) -> str:
         with self._lock:

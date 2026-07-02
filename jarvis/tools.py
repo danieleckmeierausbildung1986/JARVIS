@@ -2,8 +2,9 @@ from dataclasses import dataclass
 
 import requests
 
-from jarvis import config, weather
+from jarvis import config, news, weather
 from jarvis.calendar_store import CalendarStore
+from jarvis.stocks import StockWatcher, get_stock_price
 from jarvis.timers import TimerManager
 
 TOOL_DEFINITIONS = [
@@ -105,6 +106,70 @@ TOOL_DEFINITIONS = [
             "required": [],
         },
     },
+    {
+        "name": "get_news",
+        "description": "Ruft aktuelle Nachrichtenschlagzeilen ab (Tagesschau).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "enum": ["ausland", "inland"],
+                    "description": "'ausland' für Weltnachrichten, 'inland' für deutsche Nachrichten. Standard: ausland.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_stock_price",
+        "description": "Fragt den aktuellen Kurs einer Aktie ab.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {
+                    "type": "string",
+                    "description": "Börsenkürzel, z.B. 'AAPL' für Apple, 'MSFT' für Microsoft, 'SAP.DE' für SAP",
+                },
+            },
+            "required": ["symbol"],
+        },
+    },
+    {
+        "name": "watch_stock",
+        "description": (
+            "Überwacht einen Aktienkurs im Hintergrund und löst eine Sprachbenachrichtigung "
+            "aus, sobald der Kurs eine Zielschwelle über- oder unterschreitet."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Börsenkürzel, z.B. 'AAPL'"},
+                "direction": {
+                    "type": "string",
+                    "enum": ["above", "below"],
+                    "description": "'above' = Alarm wenn Kurs darüber steigt, 'below' = wenn er darunter fällt",
+                },
+                "target_price": {"type": "number", "description": "Zielkurs, der den Alarm auslöst"},
+                "label": {
+                    "type": "string",
+                    "description": "Optionaler Name für diese Beobachtung, Standard ist das Börsenkürzel",
+                },
+            },
+            "required": ["symbol", "direction", "target_price"],
+        },
+    },
+    {
+        "name": "cancel_stock_watch",
+        "description": "Beendet eine laufende Aktien-Überwachung.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "description": "Name der Beobachtung (siehe watch_stock)"},
+            },
+            "required": ["label"],
+        },
+    },
 ]
 
 
@@ -146,6 +211,7 @@ class ToolContext:
     ha_client: HomeAssistantClient
     timer_manager: TimerManager
     calendar: CalendarStore
+    stock_watcher: StockWatcher
 
 
 def execute_tool(name: str, tool_input: dict, ctx: ToolContext) -> str:
@@ -161,4 +227,17 @@ def execute_tool(name: str, tool_input: dict, ctx: ToolContext) -> str:
         return ctx.calendar.add_event(tool_input["title"], tool_input["when"])
     if name == "list_calendar_events":
         return ctx.calendar.list_events(tool_input.get("date"))
+    if name == "get_news":
+        return news.get_news(tool_input.get("topic", "ausland"))
+    if name == "get_stock_price":
+        return get_stock_price(tool_input["symbol"])
+    if name == "watch_stock":
+        return ctx.stock_watcher.watch(
+            tool_input["symbol"],
+            tool_input["direction"],
+            tool_input["target_price"],
+            tool_input.get("label"),
+        )
+    if name == "cancel_stock_watch":
+        return ctx.stock_watcher.cancel(tool_input["label"])
     raise ValueError(f"Unbekanntes Tool: {name}")

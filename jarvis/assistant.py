@@ -6,6 +6,7 @@ import anthropic
 
 from jarvis import config
 from jarvis.calendar_store import CalendarStore
+from jarvis.stocks import StockWatcher
 from jarvis.timers import TimerManager
 from jarvis.tools import TOOL_DEFINITIONS, HomeAssistantClient, ToolContext, execute_tool
 
@@ -17,7 +18,8 @@ def _system_prompt() -> str:
         "Antworte kurz, klar und in gesprochener Sprache (keine Aufzählungszeichen, "
         "keine Markdown-Formatierung, da deine Antwort vorgelesen wird). "
         "Nutze die verfügbaren Tools, um Smart-Home-Geräte zu steuern, Timer zu stellen, "
-        "das Wetter abzufragen oder Kalendertermine zu verwalten, wenn der Nutzer danach fragt. "
+        "das Wetter abzufragen, Kalendertermine zu verwalten, Nachrichten vorzulesen oder "
+        "Aktienkurse abzufragen/zu überwachen, wenn der Nutzer danach fragt. "
         "Wenn du für ein Tool ein Datum/Uhrzeit im ISO-8601-Format brauchst, rechne relative "
         f"Angaben (z.B. 'morgen', 'in einer Stunde') anhand des aktuellen Zeitpunkts aus: {now}."
     )
@@ -48,11 +50,13 @@ def _trim_to_turns(messages: list[dict], max_turns: int) -> list[dict]:
 
 class Assistant:
     def __init__(self, on_alarm: Callable[[str], None] | None = None):
+        alarm_callback = on_alarm or (lambda message: print(f"\n⏰ {message}"))
         self.client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         self.ctx = ToolContext(
             ha_client=HomeAssistantClient(),
-            timer_manager=TimerManager(on_alarm or (lambda label: print(f"\n⏰ Timer '{label}' ist abgelaufen."))),
+            timer_manager=TimerManager(alarm_callback),
             calendar=CalendarStore(),
+            stock_watcher=StockWatcher(alarm_callback),
         )
         self.messages: list[dict] = _trim_to_turns(_load_history(), config.MAX_HISTORY_TURNS)
 
