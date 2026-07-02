@@ -1,6 +1,10 @@
+from dataclasses import dataclass
+
 import requests
 
-from jarvis import config
+from jarvis import config, weather
+from jarvis.calendar_store import CalendarStore
+from jarvis.timers import TimerManager
 
 TOOL_DEFINITIONS = [
     {
@@ -39,6 +43,68 @@ TOOL_DEFINITIONS = [
             "required": ["entity_id"],
         },
     },
+    {
+        "name": "set_timer",
+        "description": "Stellt einen Timer, der nach Ablauf eine Sprachbenachrichtigung auslöst.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "seconds": {
+                    "type": "number",
+                    "description": "Dauer des Timers in Sekunden",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Name/Zweck des Timers, z.B. 'Pasta' oder 'Eier kochen'",
+                },
+            },
+            "required": ["seconds", "label"],
+        },
+    },
+    {
+        "name": "get_weather",
+        "description": "Ruft das aktuelle Wetter für einen Ort ab.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string",
+                    "description": "Ortsname, z.B. 'Berlin' oder 'München'",
+                },
+            },
+            "required": ["location"],
+        },
+    },
+    {
+        "name": "add_calendar_event",
+        "description": "Legt einen neuen Kalendertermin an.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Titel des Termins"},
+                "when": {
+                    "type": "string",
+                    "description": "Zeitpunkt im ISO-8601-Format, z.B. '2026-07-05T15:00'",
+                },
+            },
+            "required": ["title", "when"],
+        },
+    },
+    {
+        "name": "list_calendar_events",
+        "description": "Listet Kalendertermine auf, optional gefiltert nach Datum.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Optionales Datum im Format YYYY-MM-DD, um nur diesen Tag zu filtern. "
+                    "Wenn leer, werden alle zukünftigen Termine gelistet.",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -75,9 +141,24 @@ class HomeAssistantClient:
         return f"{entity_id} ist aktuell: {data.get('state')}"
 
 
-def execute_tool(name: str, tool_input: dict, ha_client: HomeAssistantClient) -> str:
+@dataclass
+class ToolContext:
+    ha_client: HomeAssistantClient
+    timer_manager: TimerManager
+    calendar: CalendarStore
+
+
+def execute_tool(name: str, tool_input: dict, ctx: ToolContext) -> str:
     if name == "control_device":
-        return ha_client.control_device(tool_input["entity_id"], tool_input["action"])
+        return ctx.ha_client.control_device(tool_input["entity_id"], tool_input["action"])
     if name == "get_device_state":
-        return ha_client.get_device_state(tool_input["entity_id"])
+        return ctx.ha_client.get_device_state(tool_input["entity_id"])
+    if name == "set_timer":
+        return ctx.timer_manager.set_timer(tool_input["seconds"], tool_input["label"])
+    if name == "get_weather":
+        return weather.get_weather(tool_input["location"])
+    if name == "add_calendar_event":
+        return ctx.calendar.add_event(tool_input["title"], tool_input["when"])
+    if name == "list_calendar_events":
+        return ctx.calendar.list_events(tool_input.get("date"))
     raise ValueError(f"Unbekanntes Tool: {name}")
